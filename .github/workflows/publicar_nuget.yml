@@ -61,6 +61,9 @@ jobs:
 		 name: Agregar paquetes Source privado
         run: nuget sorces add -name "Paquetes" -Source "https://nuget.pkg.github.com/SC-701/index.json"
 
+       - name: Agregar paquetes Source privado
+        run: nuget sorces add -name "Paquetes" -Source "https://nuget.pkg.github.com/SC-701/index.json"
+		
       - name: Restore NuGet packages
         run: nuget restore "Seguridad/Seguridad.API/Seguridad.sln"
       - name: Build Database Project

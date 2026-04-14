@@ -4,7 +4,7 @@ on:
   push:
     branches: [ "main" ]
     paths:
-      - 'Seguridad/Seguridad.MiddlewareAutorizacion/**'
+      - 'Seguridad.MiddlewareAutorizacion/**'
   workflow_dispatch:
 
 permissions:

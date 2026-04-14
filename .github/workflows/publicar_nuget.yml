@@ -1,50 +1,76 @@
-name: Publicar paquetes NuGet de Autorización
+# This workflow will deploy SQL Server Database Project to Azure SQL Database
+#
+# To configure this workflow:
+#
+# 1. Create an Azure SQL Database in the Azure Portal
+# 2. Create a secret in your repository named AZURE_SQL_CONNECTION_STRING with your database connection string
+# 3. Update the environment variables below with your database details
+#
+# For more information on GitHub Actions for Azure: https://github.com/Azure/Actions
+# For more information on SQL Database deployment: https://docs.microsoft.com/en-us/azure/azure-sql/database/
+
+name: Deploy Vehiculo Database to Azure SQL
+
+env:
+  AZURE_SQL_SERVER: odalis20306.database.windows.net   # Tu servidor SQL de Azure (ejemplo: vehiculo-db-server.database.windows.net)
+  AZURE_SQL_DATABASE: vehiculo  # Nombre de tu base de datos
+  DACPAC_PATH: 'Vehiculo.API/BD/bin/Release/BD.dacpac'
 
 on:
   push:
     branches: [ "main" ]
     paths:
-      - 'Seguridad.MiddlewareAutorizacion/**'
+      - 'Vehiculo.API/BD/**'
   workflow_dispatch:
 
 permissions:
   contents: read
-  packages: write
 
 jobs:
-  publish:
-    runs-on: ubuntu-latest
+  build-and-deploy-database:
+    runs-on: windows-latest
+    environment:
+      name: 'Production-Database'
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup .NET 8
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0'
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
 
-      - name: Restaurar dependencias
-        working-directory: Seguridad.MiddlewareAutorizacion
-        run: dotnet restore
+      - name: Setup NuGet
+        uses: NuGet/setup-nuget@v1
 
-      - name: Compilar en Release
-        working-directory: Seguridad.MiddlewareAutorizacion
-        run: dotnet build --configuration Release --no-restore
+      - name: Restore NuGet packages
+        run: nuget restore "Vehiculo.API/Vehiculo.API.sln"
 
-      - name: Cleanup old .nupkg files
-        run: rm -f Seguridad.MiddlewareAutorizacion/nupkgs/*.nupkg
-
-      - name: Empaquetar (dotnet pack)
-        working-directory: Seguridad.MiddlewareAutorizacion
-        run: dotnet pack --configuration Release --no-build --output ./nupkgs
-
-      - name: Set up NuGet sources
-        run: dotnet nuget add source "https://nuget.pkg.github.com/SC-701/index.json" --name "github" --username ${{ github.actor }} --password ${{ secrets.GITHUB_TOKEN }} --store-password-in-clear-text
-
-      - name: Publicar en GitHub Packages
-        working-directory: Seguridad.MiddlewareAutorizacion
+      - name: Build Database Project
         run: |
-          dotnet nuget push ./nupkgs/*.nupkg \
-            --source "https://nuget.pkg.github.com/SC-701/index.json" \
-            --api-key ${{ secrets.GITHUB_TOKEN }} \
-            --skip-duplicate
+          msbuild "Vehiculo.API/BD/BD.sqlproj" /p:Configuration=Release /p:Platform="Any CPU" /p:OutputPath="./bin/Release/"
+        shell: cmd
+
+      - name: Verify DACPAC file exists
+        run: |
+          if (Test-Path "${{ env.DACPAC_PATH }}") {
+            Write-Host "DACPAC file found at ${{ env.DACPAC_PATH }}"
+            Get-Item "${{ env.DACPAC_PATH }}" | Format-List
+          } else {
+            Write-Error "DACPAC file not found at ${{ env.DACPAC_PATH }}"
+            exit 1
+          }
+        shell: powershell
+
+      - name: Deploy to Azure SQL Database
+        uses: azure/sql-action@v2
+        with:
+          connection-string: ${{ secrets.AZURE_SQL_CONNECTION_STRING }}
+          path: ${{ env.DACPAC_PATH }}
+          action: 'publish'
+          arguments: '/p:DropObjectsNotInSource=false /p:BlockOnPossibleDataLoss=true /p:IgnoreRoleMembership=true'
+
+      - name: Database Deployment Summary
+        run: |
+          Write-Host "Database deployment completed successfully!"
+          Write-Host "Target Server: ${{ env.AZURE_SQL_SERVER }}"
+          Write-Host "Target Database: ${{ env.AZURE_SQL_DATABASE }}"
+        shell: powershell
